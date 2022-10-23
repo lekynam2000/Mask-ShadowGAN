@@ -5,6 +5,7 @@ import os
 import datetime
 import argparse
 import itertools
+import tqdm
 
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -33,7 +34,7 @@ from utils import QueueMask
 parser = argparse.ArgumentParser()
 parser.add_argument('--epoch', type=int, default=0, help='starting epoch')
 parser.add_argument('--n_epochs', type=int, default=200, help='number of epochs of training')
-parser.add_argument('--batchSize', type=int, default=1, help='size of the batches')
+parser.add_argument('--batchSize', type=int, default=16, help='size of the batches')
 parser.add_argument('--dataroot', type=str, default='datasets/horse2zebra/', help='root directory of the dataset')
 parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate')
 parser.add_argument('--decay_epoch', type=int, default=100,
@@ -157,8 +158,8 @@ mask_queue =  QueueMask(dataloader.__len__()/4)
 open(opt.log_path, 'w').write(str(opt) + '\n\n')
 
 ###### Training ######
-for epoch in range(opt.epoch, opt.n_epochs):
-	for i, batch in enumerate(dataloader):
+for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
+	for i, batch in enumerate(tqdm(dataloader)):
 		# Set model input
 		real_A = Variable(input_A.copy_(batch['A']))
 		real_B = Variable(input_B.copy_(batch['B']))
