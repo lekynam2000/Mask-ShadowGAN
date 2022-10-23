@@ -48,7 +48,7 @@ parser.add_argument('--snapshot_epochs', type=int, default=50, help='number of e
 parser.add_argument('--resume', action='store_true', help='resume')
 parser.add_argument('--iter_loss', type=int, default=500, help='average loss for n iterations')
 parser.add_argument('--data_len', type=int, default=9999, help='number of images use in training')
-parser.add_argument('--output_dir', type=int, default="output", help='persist training state directory')
+parser.add_argument('--output_dir', type=str, default="output", help='persist training state directory')
 opt = parser.parse_args()
 
 # USR
