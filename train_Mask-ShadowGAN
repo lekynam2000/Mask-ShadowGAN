@@ -5,7 +5,7 @@ import os
 import datetime
 import argparse
 import itertools
-import tqdm
+from tqdm import tqdm
 
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
