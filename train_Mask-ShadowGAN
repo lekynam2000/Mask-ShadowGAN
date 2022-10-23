@@ -58,7 +58,9 @@ opt = parser.parse_args()
 # ISTD
 # opt.dataroot = '/home/xwhu/dataset/ISTD'
 
-opt.log_path = os.path.join('output', str(datetime.datetime.now()) + '.txt')
+if not os.path.isdir(opt.output_dir):
+	os.makedirs(opt.output_dir)
+opt.log_path = os.path.join(opt.output_dir, str(datetime.datetime.now()) + '.txt')
 
 if torch.cuda.is_available():
 	opt.cuda = True
@@ -184,7 +186,7 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		pred_fake = netD_B(fake_B)
 		loss_GAN_A2B = criterion_GAN(pred_fake, target_real)  # log(Db(Gb(a)))
 
-		mask_queue.insert(mask_generator(real_A, fake_B,opt.cuda))
+		mask_queue.insert(mask_generator(real_A, fake_B))
 
 		fake_A = netG_B2A(real_B, mask_queue.rand_item())
 		pred_fake = netD_A(fake_A)

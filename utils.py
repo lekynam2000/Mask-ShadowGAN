@@ -35,18 +35,16 @@ class QueueMask():
 
 
 
-def mask_generator(shadow, shadow_free, has_cuda):
-    im_f = to_gray(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu()))
-    im_s = to_gray(to_pil(((shadow.data.squeeze(0) + 1.0) * 0.5).cpu()))
+def mask_generator(shadow, shadow_free):
+	im_f = to_gray(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu()))
+	im_s = to_gray(to_pil(((shadow.data.squeeze(0) + 1.0) * 0.5).cpu()))
 
-    diff = (np.asarray(im_f, dtype='float32')- np.asarray(im_s, dtype='float32')) # difference between shadow image and shadow_free image
-    L = threshold_otsu(diff)
-    mask = torch.tensor((np.float32(diff >= L)-0.5)/0.5).unsqueeze(0).unsqueeze(0) #-1.0:non-shadow, 1.0:shadow
-    if has_cuda:
-        mask=mask.cuda()
-    mask.requires_grad = False
+	diff = (np.asarray(im_f, dtype='float32')- np.asarray(im_s, dtype='float32')) # difference between shadow image and shadow_free image
+	L = threshold_otsu(diff)
+	mask = torch.tensor((np.float32(diff >= L)-0.5)/0.5).unsqueeze(0).unsqueeze(0).cuda() #-1.0:non-shadow, 1.0:shadow
+	mask.requires_grad = False
 
-    return mask
+	return mask
 
 
 
