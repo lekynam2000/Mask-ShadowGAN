@@ -20,9 +20,9 @@ from utils import LambdaLR
 from utils import weights_init_normal
 
 # training set:
-from datasets_USR import ImageDataset
+#from datasets_USR import ImageDataset
 #from datasets_SRD import ImageDataset
-#from datasets_ISTD import ImageDataset
+from datasets_ISTD import ImageDataset
 
 
 import matplotlib.pyplot as plt
