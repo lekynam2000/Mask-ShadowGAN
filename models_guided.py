@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 # from torchsummary import summary
 import torch
+from utils import ps
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_features):
@@ -105,7 +106,8 @@ class Generator_F2S(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, x, mask):
-        print(f"mask size: {mask.size()}")
+        ps(x,"x")
+        ps(mask,"mask")
         return (self.model(torch.cat((x, mask), 1)) + x).tanh() #(min=-1, max=1) #just learn a residual
 
 
