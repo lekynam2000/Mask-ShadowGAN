@@ -25,6 +25,9 @@ class QueueMask():
 
         self.queue.append(mask)
 
+    def multi_insert(self,masks):
+        for mask in masks:
+            self.insert(mask)
     def rand_item(self):
         assert self.queue.__len__() > 0, 'Error! Empty queue!'
         return self.queue[np.random.randint(0, self.queue.__len__())]

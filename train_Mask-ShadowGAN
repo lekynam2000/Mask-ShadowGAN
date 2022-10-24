@@ -191,7 +191,7 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 			ps(fake_B,"fake_B")
 
 
-		mask_queue.extend(mask_generator(real_A, fake_B))
+		mask_queue.multi_insert(mask_generator(real_A, fake_B))
 
 		fake_A = netG_B2A(real_B, mask_queue.rand_item())
 		pred_fake = netD_A(fake_A)
