@@ -46,8 +46,8 @@ def mask_generator(shadow, shadow_free):
 
 	return mask
 
-
-
+def ps(t,name):
+    print(f"{name}_size: {t.size()}")
 def tensor2image(tensor):
     image = 127.5*(tensor[0].cpu().float().numpy() + 1.0)
     if image.shape[0] == 1:
