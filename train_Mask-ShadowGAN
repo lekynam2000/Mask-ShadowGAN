@@ -191,7 +191,7 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 			ps(fake_B,"fake_B")
 
 
-		mask_queue.insert(mask_generator(real_A, fake_B))
+		mask_queue.extend(mask_generator(real_A, fake_B))
 
 		fake_A = netG_B2A(real_B, mask_queue.rand_item())
 		pred_fake = netD_A(fake_A)
@@ -282,8 +282,9 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 			open(opt.log_path, 'a').write(avg_log + '\n')
 
 			img_fake_A = 0.5 * (fake_A.detach().data + 1.0)
-			img_fake_A = (to_pil(img_fake_A.data.squeeze(0).cpu()))
-			img_fake_A.save(os.path.join(opt.output_dir,'fake_A.png'))
+			for i in range(img_fake_A.size()[0]):
+				img_fake_A = (to_pil(img_fake_A.data[i].cpu()))
+				img_fake_A.save(os.path.join(opt.output_dir,f"fake_A_{i}.png"))
 
 			img_fake_B = 0.5 * (fake_B.detach().data + 1.0)
 			img_fake_B = (to_pil(img_fake_B.data.squeeze(0).cpu()))
