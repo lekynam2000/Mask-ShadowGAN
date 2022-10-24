@@ -37,6 +37,8 @@ class QueueMask():
 
 def mask_generator(shadow, shadow_free):
     assert shadow.size()[0]==shadow_free.size()[0]
+    print(shadow)
+    print(shadow.data)
     masks=[]
     for i in range(shadow.size()[0]):
         im_f = to_gray(to_pil(((shadow_free.data[i] + 1.0) * 0.5).cpu()))
