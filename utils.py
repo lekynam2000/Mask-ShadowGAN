@@ -39,7 +39,7 @@ def mask_generator(shadow, shadow_free):
     im_f = to_gray(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu()))
     im_s = to_gray(to_pil(((shadow.data.squeeze(0) + 1.0) * 0.5).cpu()))
 
-    psn(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu(),"original")
+    ps(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu(),"original")
     psn(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu()),"to_pil")
     psn(to_gray(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu())),"to_gray")
 
