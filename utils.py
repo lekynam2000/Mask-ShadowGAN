@@ -48,9 +48,9 @@ def mask_generator(shadow, shadow_free):
         im_f = to_gray(to_pil(((shadow_free.data[i] + 1.0) * 0.5).cpu()))
         im_s = to_gray(to_pil(((shadow.data[i] + 1.0) * 0.5).cpu()))
 
-        ps(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu(),"original")
-        psn(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu()),"to_pil")
-        psn(to_gray(to_pil(((shadow_free.data.squeeze(0) + 1.0) * 0.5).cpu())),"to_gray")
+        ps(((shadow_free.data[i] + 1.0) * 0.5).cpu(),"original")
+        psn(to_pil(((shadow_free.data[i] + 1.0) * 0.5).cpu()),"to_pil")
+        psn(to_gray(to_pil(((shadow_free.data[i] + 1.0) * 0.5).cpu())),"to_gray")
 
         diff = (np.asarray(im_f, dtype='float32')- np.asarray(im_s, dtype='float32')) # difference between shadow image and shadow_free image
         L = threshold_otsu(diff)
