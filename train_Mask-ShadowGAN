@@ -163,7 +163,7 @@ open(opt.log_path, 'w').write(str(opt) + '\n\n')
 
 ###### Training ######
 for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
-	for i, batch in enumerate(tqdm(dataloader)):
+	for i, batch in enumerate(tqdm(dataloader,mininterval=60)):
 		if(i>=opt.data_len):
 			break
 		# Set model input
@@ -186,9 +186,9 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		pred_fake = netD_B(fake_B)
 		loss_GAN_A2B = criterion_GAN(pred_fake, target_real)  # log(Db(Gb(a)))
 
-		if i==0:
-			ps(real_A,"real_A")
-			ps(fake_B,"fake_B")
+		# if i==0:
+			# ps(real_A,"real_A")
+			# ps(fake_B,"fake_B")
 
 
 		mask_queue.multi_insert(mask_generator(real_A, fake_B))

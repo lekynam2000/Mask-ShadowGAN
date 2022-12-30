@@ -106,8 +106,8 @@ class Generator_F2S(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, x, mask):
-        ps(x,"x")
-        ps(mask,"mask")
+        # ps(x,"x")
+        # ps(mask,"mask")
         return (self.model(torch.cat((x, mask), 1)) + x).tanh() #(min=-1, max=1) #just learn a residual
 
 
