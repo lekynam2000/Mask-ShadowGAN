@@ -15,7 +15,7 @@ def compare(gt,est):
     result=dict()
     gt_img = asarray(Image.open(gt).convert('RGB'))
     est_img = asarray(Image.open(est).convert('RGB'))
-    print(gt_img.shape) 
+    print(f"gt_img.shape: {gt_img.shape} est_img.shape: {est_img.shape}") 
     result["rmse"] = math.sqrt(mse(gt_img,est_img))
     result["psnr"] = psnr(gt_img,est_img)
     result["ssim"] = ssim(gt_img,est_img,channel_axis=2)
