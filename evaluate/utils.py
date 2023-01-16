@@ -4,6 +4,7 @@ import argparse
 import sys
 import os
 from tqdm import tqdm
+import numpy as np
 
 from skimage.metrics import mean_squared_error as mse, peak_signal_noise_ratio as psnr, structural_similarity as ssim
 from PIL import Image
@@ -16,21 +17,26 @@ def compare(gt,est):
     gt_img = asarray(Image.open(gt).convert('RGB'))
     est_img = asarray(Image.open(est).convert('RGB'))
     print(f"gt_img.shape: {gt_img.shape} est_img.shape: {est_img.shape}") 
-    result["rmse"] = math.sqrt(mse(gt_img,est_img))
-    result["psnr"] = psnr(gt_img,est_img)
+    
+   
+    result["psnr"] = psnr(gt_img, est_img,data_range=255) 
+    result["rmse"] = math.sqrt(mse(gt_img, est_img))
     result["ssim"] = ssim(gt_img,est_img,channel_axis=2)
+    
     return result
 
 def evaluate(gt_dir,est_dir,img_suf=".png"):
     gt_list = [os.path.splitext(f)[0] for f in os.listdir(gt_dir) if f.endswith(img_suf)]
     est_set = set([os.path.splitext(f)[0] for f in os.listdir(est_dir) if f.endswith(img_suf)])
-    metrics_list={"rmse":[],"psnr":[],"ssim":[]}
+    metrics_list={}
     for idx, img_name in tqdm(enumerate(gt_list)):
         if img_name in est_set:
             gt = os.path.join(gt_dir,img_name+img_suf)
             est = os.path.join(est_dir,img_name+img_suf)
             metrics = compare(gt,est)
             for m in metrics:
+                if m not in metrics_list.keys():
+                    metrics_list[m]=[]
                 metrics_list[m].append(metrics[m]) 
         else:
             print(f"Error: image {img_name} is not generated")

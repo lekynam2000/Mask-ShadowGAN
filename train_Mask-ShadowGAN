@@ -64,6 +64,8 @@ opt.log_path = os.path.join(opt.output_dir, str(datetime.datetime.now()) + '.txt
 
 if torch.cuda.is_available():
 	opt.cuda = True
+	torch.cuda.set_device(3)
+	print(f"using GPU: {torch.cuda.current_device()}")
 
 opt.resume = False
 
