@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from PIL import Image
 import torch
-from vgg19_frozen import vgg19
+from custom_loss_utils.feature_extractor.vgg19_frozen import vgg19
 
 from models_guided import Generator_F2S, Generator_S2F
 from models_guided import Discriminator
@@ -292,11 +292,6 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 			img_fake_B = 0.5 * (fake_B.detach().data + 1.0)
 			img_fake_B = (to_pil(img_fake_B.data.squeeze(0).cpu()))
 			img_fake_B.save(os.path.join(opt.output_dir,'fake_B.png'))
-
-		# Progress report (http://137.189.90.150:8097)
-		# logger.log({'loss_G': loss_G, 'loss_G_identity': (loss_identity_A + loss_identity_B), 'loss_G_GAN': (loss_GAN_A2B + loss_GAN_B2A),
-		#             'loss_G_cycle': (loss_cycle_ABA + loss_cycle_BAB), 'loss_D': (loss_D_A + loss_D_B)},
-		#             images={'real_A': real_A, 'real_B': real_B, 'fake_A': fake_A, 'fake_B': fake_B})
 
 	# Update learning rates
 	lr_scheduler_G.step()
