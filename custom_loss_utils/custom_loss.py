@@ -1,16 +1,20 @@
 from functools import reduce
 import torch
-from custom_loss_utils.loss_utils import blur
+from custom_loss_utils.loss_utils import blur,gram_matrix
 
 class content_loss_factory:
-    def __init__(self,model,layer='relu5_4'):
-        self.model=model
-        self.layer=layer
+    def __init__(self,model,layers=['relu5_4']):
+        self.model = model
+        self.layers = layers
     def __call__(self,img1,img2):
-        img1_feat = getattr(self.model(img1),self.layer)
-        img2_feat = getattr(self.model(img2),self.layer)
+        loss = 0
+        for layer in self.layers:
+            img1_feat = getattr(self.model(img1),layer)
+            img2_feat = getattr(self.model(img2),layer)
+            loss += torch.nn.MSELoss(img1_feat,img2_feat)
         #content_size = reduce(lambda a,b: a*b, img1_feat.size())
-        return torch.nn.MSELoss(img1_feat,img2_feat)
+        loss /= len(self.layers)
+        return loss 
 
 class color_loss_factory:
     def __init__(self):
@@ -21,7 +25,14 @@ class color_loss_factory:
         return torch.nn.MSELoss(img1_blur,img2_blur)
 
 class style_loss_factory:
-    def __init__(self,model):
+    def __init__(self,model,layers=['relu5_4']):
         self.model = model
+        self.layers = layers
     def __call__(self,img1,img2):
-        pass
+        loss = 0
+        for layer in self.layers:
+            gram1 = gram_matrix(img1)
+            gram2 = gram_matrix(img2)
+            loss += torch.nn.MSELoss(gram1,gram2)
+        loss /= len(self.layers)
+        return loss
