@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from PIL import Image
 import torch
+from vgg19_frozen import vgg19
 
 from models_guided import Generator_F2S, Generator_S2F
 from models_guided import Discriminator

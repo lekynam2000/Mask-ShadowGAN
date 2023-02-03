@@ -53,7 +53,8 @@ opt.im_suf_B = '.png'
 
 if torch.cuda.is_available():
     opt.cuda = True
-    device = torch.device('cuda:0')
+    torch.cuda.set_device(3)
+    print(f"using GPU: {torch.cuda.current_device()}")
 
 print(opt)
 
@@ -64,8 +65,8 @@ netG_A2B = Generator_S2F(opt.input_nc, opt.output_nc)
 # netG_B2A = Generator_F2S(opt.output_nc, opt.input_nc)
 
 if opt.cuda:
-    netG_A2B.to(device)
-    # netG_B2A.to(device)
+    netG_A2B.cuda()
+    # netG_B2A.cuda()
 
 # Load state dicts
 netG_A2B.load_state_dict(torch.load(opt.generator_A2B))
@@ -120,7 +121,7 @@ for idx, img_name in enumerate(gt_list):
     img = Image.open(os.path.join(opt.dataroot_A, img_name + opt.im_suf_A)).convert('RGB')
     w, h = img.size
 
-    img_var = (img_transform(img).unsqueeze(0)).to(device)
+    img_var = (img_transform(img).unsqueeze(0)).cuda()
 
     # Generate output
 
