@@ -19,3 +19,5 @@ class Extractor_VGG19BN:
             return self.feature[0]
         return self.feature[layer_id] 
 
+    def __call__(self,x):
+        self.model(x)
