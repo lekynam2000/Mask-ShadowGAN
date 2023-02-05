@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from PIL import Image
 import torch
-from custom_loss_utils.feature_extractor.vgg19_frozen import vgg19
+from custom_loss_utils.feature_extractor.extractor_vgg19bn import vgg19
 from custom_loss_utils.custom_loss import color_loss_factory,content_loss_factory,style_loss_factory
 from custom_loss_utils.LossFormat import LossFormat
 
