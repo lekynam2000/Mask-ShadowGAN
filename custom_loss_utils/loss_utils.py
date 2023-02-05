@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from functools import reduce
+from log_utils import timeit
 
 import torch
 from torch import nn
@@ -29,6 +30,7 @@ def gauss_filter(kernlen=21, nsig=3, channels=3):
     filter = filter.double()
     print(filter.weight.data)
     return filter
+
 
 def blur(x):
     filter = gauss_filter(21,3,3)

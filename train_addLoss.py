@@ -13,23 +13,22 @@ from torch.autograd import Variable
 from PIL import Image
 import torch
 from custom_loss_utils.feature_extractor.vgg19_frozen import vgg19
+from custom_loss_utils.custom_loss import color_loss_factory,content_loss_factory,style_loss_factory
+from custom_loss_utils.LossFormat import LossFormat
 
 from models_guided import Generator_F2S, Generator_S2F
 from models_guided import Discriminator
 from utils import ReplayBuffer
 from utils import LambdaLR
-# from utils import Logger
 from utils import weights_init_normal, ps
-
+from plt_utils import StackDrawer,draw_loss
 # training set:
 #from datasets_USR import ImageDataset
 #from datasets_SRD import ImageDataset
 from datasets_ISTD import ImageDataset
 
-
+from utils import mask_generator, QueueMask
 import matplotlib.pyplot as plt
-from utils import mask_generator
-from utils import QueueMask
 
 
 parser = argparse.ArgumentParser()
@@ -51,7 +50,7 @@ parser.add_argument('--iter_loss', type=int, default=500, help='average loss for
 parser.add_argument('--data_len', type=int, default=9999, help='number of images use in training')
 parser.add_argument('--output_dir', type=str, default="output", help='persist training state directory')
 opt = parser.parse_args()
-
+plt.ioff()
 # USR
 # opt.dataroot = '/home/xwhu/dataset/shadow_USR'
 # SRD
@@ -95,6 +94,13 @@ criterion_GAN = torch.nn.MSELoss()  # lsgan
 # criterion_GAN = torch.nn.BCEWithLogitsLoss() #vanilla
 criterion_cycle = torch.nn.L1Loss()
 criterion_identity = torch.nn.L1Loss()
+
+#Perceptual_loss
+perceptual_loss = {}
+feat_ex = vgg19().cuda()
+perceptual_loss["color"] = LossFormat("Color_loss",color_loss_factory(),1)
+perceptual_loss["content"]=LossFormat("Content_loss",content_loss_factory(feat_ex,['relu1_2','relu2_2','relu3_4','relu4_4','relu5_4']),0.1)
+perceptual_loss["style"]=LossFormat("Style_loss",style_loss_factory(feat_ex,['relu1_2','relu2_2','relu3_4','relu4_4','relu5_4']),10000)
 
 # Optimizers & LR schedulers
 optimizer_G = torch.optim.Adam(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()),
@@ -143,7 +149,7 @@ transforms_ = [#transforms.Resize((opt.size, opt.size), Image.BICUBIC),
 			   transforms.RandomCrop(opt.size),
 			   transforms.RandomHorizontalFlip(),
 			   transforms.ToTensor(),
-			   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+			   transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
 dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unaligned=True),
 						batch_size=opt.batchSize, shuffle=True, num_workers=opt.n_cpu)
 
@@ -151,7 +157,6 @@ dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unal
 # logger = Logger(opt.n_epochs, len(dataloader), server='http://137.189.90.150', http_proxy_host='http://proxy.cse.cuhk.edu.hk/', env = 'main')
 ###################################
 
-plt.ioff()
 curr_iter = 0
 G_losses_temp = 0
 D_A_losses_temp = 0
@@ -163,6 +168,9 @@ to_pil = transforms.ToPILImage()
 
 mask_queue =  QueueMask(dataloader.__len__()/4)
 open(opt.log_path, 'w').write(str(opt) + '\n\n')
+
+gamma = [250, 10, 100, 20]
+st_drawer = StackDrawer(gamma, 4, opt.iter_loss, opt.output_dir)
 
 ###### Training ######
 for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
@@ -176,39 +184,54 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		###### Generators A2B and B2A ######
 		optimizer_G.zero_grad()
 
-		# Identity loss
+		#Generator same domain
 		# G_A2B(B) should equal B if real B is fed
 		same_B = netG_A2B(real_B)
-		loss_identity_B = criterion_identity(same_B, real_B) * 5.0  # ||Gb(b)-b||1
 		# G_B2A(A) should equal A if real A is fed, so the mask should be all zeros
 		same_A = netG_B2A(real_A, mask_non_shadow)
-		loss_identity_A = criterion_identity(same_A, real_A) * 5.0  # ||Ga(a)-a||1
 
-		# GAN loss
+		# Generator shift domain
 		fake_B = netG_A2B(real_A)
 		pred_fake = netD_B(fake_B)
-		loss_GAN_A2B = criterion_GAN(pred_fake, target_real)  # log(Db(Gb(a)))
-
-		# if i==0:
-			# ps(real_A,"real_A")
-			# ps(fake_B,"fake_B")
-
-
 		mask_queue.multi_insert(mask_generator(real_A, fake_B))
-
 		fake_A = netG_B2A(real_B, mask_queue.rand_item())
 		pred_fake = netD_A(fake_A)
+		
+		# Generator back to original domain (cycle)
+		recovered_A = netG_B2A(fake_B, mask_queue.last_item()) # real shadow, false shadow free
+		recovered_B = netG_A2B(fake_A)
+
+		#Identity loss
+		loss_identity_B = criterion_identity(same_B, real_B)  # ||Gb(b)-b||1
+		loss_identity_A = criterion_identity(same_A, real_A)  # ||Ga(a)-a||1
+		loss_identity = loss_identity_A+loss_identity_B
+
+		#GAN loss
+		loss_GAN_A2B = criterion_GAN(pred_fake, target_real)  # log(Db(Gb(a)))
 		loss_GAN_B2A = criterion_GAN(pred_fake, target_real)  # log(Da(Ga(b)))
+		loss_GAN = loss_GAN_A2B + loss_GAN_B2A
 
 		# Cycle loss
-		recovered_A = netG_B2A(fake_B, mask_queue.last_item()) # real shadow, false shadow free
-		loss_cycle_ABA = criterion_cycle(recovered_A, real_A) * 10.0  # ||Ga(Gb(a))-a||1
+		loss_cycle_ABA = criterion_cycle(recovered_A, real_A)  # ||Ga(Gb(a))-a||1
+		loss_cycle_BAB = criterion_cycle(recovered_B, real_B)  # ||Gb(Ga(b))-b||1
+		cycle_loss = loss_cycle_ABA + loss_cycle_BAB
 
-		recovered_B = netG_A2B(fake_A)
-		loss_cycle_BAB = criterion_cycle(recovered_B, real_B) * 10.0  # ||Gb(Ga(b))-b||1
+		# Shadow-robust loss
+		loss_rA_fB = perceptual_loss['content'].calc_loss(real_A,fake_B)
+		loss_rB_fA = perceptual_loss['content'].calc_loss(real_B,fake_A)
+		loss_shadow_robust = loss_rA_fB + loss_rB_fA
+		
+		#Perceptual loss
+		loss_perceptual_ABA = 0
+		loss_perceptual_BAB = 0
+		for loss_type in perceptual_loss.keys():
+			loss_perceptual_ABA += perceptual_loss[loss_type].calc_loss(recovered_A, real_A)
+			loss_perceptual_BAB += perceptual_loss[loss_type].calc_loss(recovered_B, real_B)
+		loss_perceptual = loss_perceptual_ABA + loss_perceptual_BAB
 
 		# Total loss
-		loss_G = loss_identity_A + loss_identity_B + loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB
+		
+		loss_G = gamma[0]*(loss_GAN)+gamma[1]*(loss_shadow_robust)+gamma[2]*(loss_identity)+gamma[3]*(loss_perceptual)
 		loss_G.backward()
 
 		#G_losses.append(loss_G.item())
@@ -322,24 +345,11 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 	print('Epoch:{}'.format(epoch))
 
 	if (epoch + 1) % opt.snapshot_epochs == 0:
-		plt.figure(figsize=(10, 5))
-		plt.title("Generator Loss During Training")
-		plt.plot(G_losses, label="G loss")
-		plt.xlabel("iterations / %d" % (opt.iter_loss))
-		plt.ylabel("loss")
-		plt.legend()
-		plt.savefig(os.path.join(opt.output_dir,'generator.png'))
-		# plt.show(block=False)
+		draw_loss([G_losses],["Generator Loss"],opt.iter_loss,opt.output_dir, "Generator_loss")
 
-		plt.figure(figsize=(10, 5))
-		plt.title("Discriminator Loss During Training")
-		plt.plot(D_A_losses, label="D_A loss")
-		plt.plot(D_B_losses, label="D_B loss")
-		plt.xlabel("iterations / %d" % (opt.iter_loss))
-		plt.ylabel("loss")
-		plt.legend()
-		plt.savefig(os.path.join(opt.output_dir,'discriminator.png')) 
-		# plt.show(block=False)
-		plt.close('all')
+		draw_loss([D_A_losses,D_B_losses],["D_A_losses","D_B_losses"],opt.iter_loss,opt.output_dir,"Discriminator_loss")
+
+		st_drawer.update([loss_GAN, loss_shadow_robust, loss_identity, loss_perceptual])
+		st_drawer.draw()
 
 ###################################
