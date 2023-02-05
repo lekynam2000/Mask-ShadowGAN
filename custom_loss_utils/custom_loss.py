@@ -10,6 +10,9 @@ class content_loss_factory:
         self.layers = layers
     def __call__(self,img1,img2):
         loss = 0
+        self.model(img1)
+        for layer in self.layers():
+            pass
         for layer in self.layers:
             img1_feat = getattr(self.model(img1),layer)
             img2_feat = getattr(self.model(img2),layer)
