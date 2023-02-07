@@ -23,18 +23,11 @@ def gauss_filter(kernlen=21, nsig=3, channels=3):
     kernel = torch.from_numpy(out_filter)
     kernel = kernel.permute(3,2,1,0)
     kernel = kernel.repeat(channels,1,1,1)
-    print(f"Kernel shape: {kernel.shape}")
     filter = nn.Conv2d(in_channels=channels, out_channels=channels,
                                  kernel_size=kernlen, groups=channels, padding='same', bias=False)
     filter.weight.data = kernel
-    filter = filter.double()
-    print(filter.weight.data)
     return filter
 
-
-def blur(x):
-    filter = gauss_filter(21,3,3)
-    return filter(x)
 
 #For computing style loss
 def gram_matrix(input):

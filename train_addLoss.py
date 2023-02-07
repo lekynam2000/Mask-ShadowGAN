@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from PIL import Image
 import torch
-from custom_loss_utils.feature_extractor.extractor_vgg19bn import vgg19
+from custom_loss_utils.feature_extractor.extractor import Extractor_VGG19BN,Extractor_VGG16BN
 from custom_loss_utils.custom_loss import color_loss_factory,content_loss_factory,style_loss_factory
 from custom_loss_utils.LossFormat import LossFormat
 
@@ -49,6 +49,7 @@ parser.add_argument('--resume', action='store_true', help='resume')
 parser.add_argument('--iter_loss', type=int, default=500, help='average loss for n iterations')
 parser.add_argument('--data_len', type=int, default=9999, help='number of images use in training')
 parser.add_argument('--output_dir', type=str, default="output", help='persist training state directory')
+parser.add_argument('--gpu_id', type=int, default=0, help='gpu id in use')
 opt = parser.parse_args()
 plt.ioff()
 # USR
@@ -58,13 +59,14 @@ plt.ioff()
 # ISTD
 # opt.dataroot = '/home/xwhu/dataset/ISTD'
 
+opt.output_dir += "_"+str(datetime.datetime.now()) 
 if not os.path.isdir(opt.output_dir):
 	os.makedirs(opt.output_dir)
 opt.log_path = os.path.join(opt.output_dir, str(datetime.datetime.now()) + '.txt')
 
 if torch.cuda.is_available():
 	opt.cuda = True
-	torch.cuda.set_device(3)
+	torch.cuda.set_device(opt.gpu_id)
 	print(f"using GPU: {torch.cuda.current_device()}")
 
 opt.resume = False
@@ -97,10 +99,10 @@ criterion_identity = torch.nn.L1Loss()
 
 #Perceptual_loss
 perceptual_loss = {}
-feat_ex = vgg19().cuda()
+extractor = Extractor_VGG16BN()
 perceptual_loss["color"] = LossFormat("Color_loss",color_loss_factory(),1)
-perceptual_loss["content"]=LossFormat("Content_loss",content_loss_factory(feat_ex,['relu1_2','relu2_2','relu3_4','relu4_4','relu5_4']),0.1)
-perceptual_loss["style"]=LossFormat("Style_loss",style_loss_factory(feat_ex,['relu1_2','relu2_2','relu3_4','relu4_4','relu5_4']),10000)
+perceptual_loss["content"]=LossFormat("Content_loss",content_loss_factory(extractor,[38]),0.1)
+perceptual_loss["style"]=LossFormat("Style_loss",style_loss_factory(extractor,[42]),10000)
 
 # Optimizers & LR schedulers
 optimizer_G = torch.optim.Adam(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()),
@@ -217,16 +219,27 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		cycle_loss = loss_cycle_ABA + loss_cycle_BAB
 
 		# Shadow-robust loss
+		
+		extractor(torch.cat((real_A,fake_B)))
 		loss_rA_fB = perceptual_loss['content'].calc_loss(real_A,fake_B)
+		# print(f"loss_rA_fB: {loss_rA_fB}")
+		extractor(torch.cat((real_B,fake_A)))
 		loss_rB_fA = perceptual_loss['content'].calc_loss(real_B,fake_A)
+
 		loss_shadow_robust = loss_rA_fB + loss_rB_fA
 		
 		#Perceptual loss
 		loss_perceptual_ABA = 0
 		loss_perceptual_BAB = 0
+		
+		extractor(torch.cat((recovered_A, real_A)))
 		for loss_type in perceptual_loss.keys():
 			loss_perceptual_ABA += perceptual_loss[loss_type].calc_loss(recovered_A, real_A)
+
+		extractor(torch.cat((recovered_B, real_B)))
+		for loss_type in perceptual_loss.keys():
 			loss_perceptual_BAB += perceptual_loss[loss_type].calc_loss(recovered_B, real_B)
+
 		loss_perceptual = loss_perceptual_ABA + loss_perceptual_BAB
 
 		# Total loss
@@ -307,14 +320,18 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 			print(avg_log)
 			open(opt.log_path, 'a').write(avg_log + '\n')
 
-			img_fake_A = 0.5 * (fake_A.detach().data + 1.0)
-			for i in range(img_fake_A.size()[0]):
-				img_fake_A = (to_pil(img_fake_A.data[i].cpu()))
-				img_fake_A.save(os.path.join(opt.output_dir,f"fake_A_{i}.png"))
+			st_drawer.update([loss_GAN, loss_shadow_robust, loss_identity, loss_perceptual])
+			if curr_iter%100==0:
+				st_drawer.draw()
 
-			img_fake_B = 0.5 * (fake_B.detach().data + 1.0)
-			img_fake_B = (to_pil(img_fake_B.data.squeeze(0).cpu()))
-			img_fake_B.save(os.path.join(opt.output_dir,'fake_B.png'))
+			# img_fake_A = 0.5 * (fake_A.detach().data + 1.0)
+			# for i in range(img_fake_A.size()[0]):
+			# 	img_fake_A = (to_pil(img_fake_A.data[i].cpu()))
+			# 	img_fake_A.save(os.path.join(opt.output_dir,f"fake_A_{i}.png"))
+
+			# img_fake_B = 0.5 * (fake_B.detach().data + 1.0)
+			# img_fake_B = (to_pil(img_fake_B.data.squeeze(0).cpu()))
+			# img_fake_B.save(os.path.join(opt.output_dir,'fake_B.png'))
 
 	# Update learning rates
 	lr_scheduler_G.step()
@@ -348,8 +365,5 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		draw_loss([G_losses],["Generator Loss"],opt.iter_loss,opt.output_dir, "Generator_loss")
 
 		draw_loss([D_A_losses,D_B_losses],["D_A_losses","D_B_losses"],opt.iter_loss,opt.output_dir,"Discriminator_loss")
-
-		st_drawer.update([loss_GAN, loss_shadow_robust, loss_identity, loss_perceptual])
-		st_drawer.draw()
 
 ###################################

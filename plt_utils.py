@@ -24,8 +24,8 @@ class StackDrawer:
     
     def update(self,loss_array):
         assert len(loss_array)==self.num_loss
-        for i in self.num_loss:
-            self.loss_hist[i].append(self.gamma[i]*loss_array[i])
+        for i in range(self.num_loss):
+            self.loss_hist[i].append(self.gamma[i]*loss_array[i].detach().cpu())
     
     def draw(self):
         y = np.vstack([hist for hist in self.loss_hist])

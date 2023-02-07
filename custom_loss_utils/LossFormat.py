@@ -8,11 +8,11 @@ class LossFormat:
         self.temp = 0
         self.hist = []
     
-    @timeit
+    #@timeit
     def calc_loss(self,img1,img2):
         self.temp = self.func(img1,img2)*self.weight
         self.hist.append(self.temp)
         return self.temp
-
+        
     def __repr__(self):
         return self.name
