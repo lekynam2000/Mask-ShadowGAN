@@ -172,7 +172,7 @@ mask_queue =  QueueMask(dataloader.__len__()/4)
 open(opt.log_path, 'w').write(str(opt) + '\n\n')
 
 gamma = [250, 10, 100, 20]
-st_drawer = StackDrawer(gamma, 4, opt.iter_loss, opt.output_dir)
+st_drawer = StackDrawer(gamma, 4, opt.iter_loss, opt.output_dir,['loss_GAN', 'loss_shadow_robust', 'loss_identity', 'loss_perceptual'])
 
 ###### Training ######
 for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
