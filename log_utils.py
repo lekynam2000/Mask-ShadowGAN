@@ -1,5 +1,6 @@
 from functools import wraps
 import time
+import torch
 
 
 def timeit(func):
@@ -12,3 +13,6 @@ def timeit(func):
         print(f'Function {func.__name__} Took {total_time:.4f} seconds')
         return result
     return timeit_wrapper
+
+def log_gpu_used(msg,device):
+    print(f"GPU allocated after {msg}: {torch.cuda.memory_allocated(device)}")

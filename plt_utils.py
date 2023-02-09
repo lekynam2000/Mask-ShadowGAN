@@ -21,7 +21,7 @@ class StackDrawer:
         self.loss_hist = [[] for _ in range(self.num_loss)]
         self.iter_loss = iter_loss
         self.output_dir = output_dir
-        self.colors = ['red', 'yellow', 'blue', 'black', 'green', 'brown']
+        self.colors = ['red', 'orange', 'blue', 'black']
         self.loss_name = loss_name
     def update(self,loss_array):
         assert len(loss_array)==self.num_loss
@@ -36,7 +36,7 @@ class StackDrawer:
         plt.title("Loss Component During Training")
         for i in range(self.num_loss):
             plt.plot([],[],color=self.colors[i],label=self.loss_name[i])
-        plt.stackplot(x,y,color=self.colors)
+        plt.stackplot(x,*self.loss_hist,colors=self.colors)
         plt.xlabel("iterations / %d" % (self.iter_loss))
         plt.ylabel("loss")
         plt.legend()

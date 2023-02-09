@@ -10,6 +10,7 @@ class content_loss_factory:
         self.layers = layers
     def __call__(self,img1,img2):
         #Remember to call the extractor in advance
+        batch_size = img1.shape[0]
         should_be_input = torch.cat((img1,img2))
         if not torch.equal(should_be_input,self.extractor["input"]):
             print(f"Input mismatch at {self.__name__}:")
@@ -18,8 +19,8 @@ class content_loss_factory:
         loss = 0
         for layer in self.layers:
             stacked_feat = self.extractor[layer]
-            img1_feat = stacked_feat[0]
-            img2_feat = stacked_feat[1]
+            img1_feat = stacked_feat[:batch_size//2]
+            img2_feat = stacked_feat[batch_size//2:]
             loss += mse_loss(img1_feat,img2_feat)
 
         loss /= len(self.layers)
@@ -40,7 +41,7 @@ class style_loss_factory:
         self.layers = layers
     def __call__(self,img1,img2):
         #Remember to call the extractor in advance
-
+        batch_size = img1.shape[0]
         should_be_input = torch.cat((img1,img2))
         if not torch.equal(should_be_input,self.extractor["input"]):
             print(f"Input mismatch at {self.__name__}:")
@@ -49,8 +50,8 @@ class style_loss_factory:
         loss = 0
         for layer in self.layers:
             stacked_feat = self.extractor[layer]
-            img1_feat = gram_matrix(stacked_feat[None,0])
-            img2_feat = gram_matrix(stacked_feat[None,1])
+            img1_feat = gram_matrix(stacked_feat[:batch_size//2])
+            img2_feat = gram_matrix(stacked_feat[batch_size//2:])
             loss += mse_loss(img1_feat,img2_feat)
 
         loss /= len(self.layers)

@@ -7,6 +7,7 @@ import argparse
 import itertools
 from tqdm import tqdm
 
+import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
@@ -20,15 +21,16 @@ from models_guided import Generator_F2S, Generator_S2F
 from models_guided import Discriminator
 from utils import ReplayBuffer
 from utils import LambdaLR
-from utils import weights_init_normal, ps
+from utils import weights_init_normal, ps, normalize_weight
 from plt_utils import StackDrawer,draw_loss
 # training set:
 #from datasets_USR import ImageDataset
 #from datasets_SRD import ImageDataset
 from datasets_ISTD import ImageDataset
 
-from utils import mask_generator, QueueMask
+from utils_v2 import mask_generator_fac, QueueMask
 import matplotlib.pyplot as plt
+from log_utils import log_gpu_used
 
 
 parser = argparse.ArgumentParser()
@@ -100,15 +102,15 @@ criterion_identity = torch.nn.L1Loss()
 #Perceptual_loss
 perceptual_loss = {}
 extractor = Extractor_VGG16BN()
-perceptual_loss["color"] = LossFormat("Color_loss",color_loss_factory(),1)
-perceptual_loss["content"]=LossFormat("Content_loss",content_loss_factory(extractor,[38]),0.1)
-perceptual_loss["style"]=LossFormat("Style_loss",style_loss_factory(extractor,[42]),10000)
+perceptual_loss["color"] = LossFormat("Color_loss",color_loss_factory(),10)
+perceptual_loss["content"]=LossFormat("Content_loss",content_loss_factory(extractor,[32,42]),1)
+perceptual_loss["style"]=LossFormat("Style_loss",style_loss_factory(extractor,[19,39]),1000)
 
 # Optimizers & LR schedulers
 optimizer_G = torch.optim.Adam(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()),
-							   lr=opt.lr, betas=(0.5, 0.999))
-optimizer_D_A = torch.optim.Adam(netD_A.parameters(), lr=opt.lr, betas=(0.5, 0.999))
-optimizer_D_B = torch.optim.Adam(netD_B.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+							   lr=opt.lr, betas=(0.9, 0.999))
+optimizer_D_A = torch.optim.Adam(netD_A.parameters(), lr=opt.lr, betas=(0.9, 0.999))
+optimizer_D_B = torch.optim.Adam(netD_B.parameters(), lr=opt.lr, betas=(0.9, 0.999))
 
 lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G,
 												   lr_lambda=LambdaLR(opt.n_epochs, opt.epoch, opt.decay_epoch).step)
@@ -146,12 +148,15 @@ fake_A_buffer = ReplayBuffer()
 fake_B_buffer = ReplayBuffer()
 
 # Dataset loader
+norm_mean = np.array([0.485, 0.456, 0.406])
+norm_std = np.array([0.229, 0.224, 0.225])
+mask_generator = mask_generator_fac(norm_mean, norm_std)
 transforms_ = [#transforms.Resize((opt.size, opt.size), Image.BICUBIC),
 			   transforms.Resize(int(opt.size * 1.12), Image.BICUBIC),
 			   transforms.RandomCrop(opt.size),
 			   transforms.RandomHorizontalFlip(),
 			   transforms.ToTensor(),
-			   transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]
+			   transforms.Normalize(norm_mean,norm_std)]
 dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unaligned=True),
 						batch_size=opt.batchSize, shuffle=True, num_workers=opt.n_cpu)
 
@@ -171,7 +176,8 @@ to_pil = transforms.ToPILImage()
 mask_queue =  QueueMask(dataloader.__len__()/4)
 open(opt.log_path, 'w').write(str(opt) + '\n\n')
 
-gamma = [250, 10, 100, 20]
+gamma = normalize_weight([250, 10, 100, 20])
+
 st_drawer = StackDrawer(gamma, 4, opt.iter_loss, opt.output_dir,['loss_GAN', 'loss_shadow_robust', 'loss_identity', 'loss_perceptual'])
 
 ###### Training ######
@@ -195,12 +201,17 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		# Generator shift domain
 		fake_B = netG_A2B(real_A)
 		pred_fake = netD_B(fake_B)
+		shadow_rA_fB = mask_generator(real_A, fake_B)
 		mask_queue.multi_insert(mask_generator(real_A, fake_B))
-		fake_A = netG_B2A(real_B, mask_queue.rand_item())
+		mask_rB_fA = mask_queue.get_masks(batch_size=real_B.shape[0])
+
+		log_gpu_used("Before netG_B2A:",opt.gpu_id)
+		fake_A = netG_B2A(real_B, mask_rB_fA)
+		log_gpu_used("Before netD_A:",opt.gpu_id)
 		pred_fake = netD_A(fake_A)
 		
 		# Generator back to original domain (cycle)
-		recovered_A = netG_B2A(fake_B, mask_queue.last_item()) # real shadow, false shadow free
+		recovered_A = netG_B2A(fake_B, torch.cat(shadow_rA_fB)) # real shadow, false shadow free
 		recovered_B = netG_A2B(fake_A)
 
 		#Identity loss
@@ -320,8 +331,8 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 			print(avg_log)
 			open(opt.log_path, 'a').write(avg_log + '\n')
 
-			st_drawer.update([loss_GAN, loss_shadow_robust, loss_identity, loss_perceptual])
-			if curr_iter%100==0:
+			if curr_iter%opt.iter_loss == 0:
+				st_drawer.update([loss_GAN, loss_shadow_robust, loss_identity, loss_perceptual])
 				st_drawer.draw()
 
 			# img_fake_A = 0.5 * (fake_A.detach().data + 1.0)
