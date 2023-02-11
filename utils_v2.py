@@ -43,8 +43,8 @@ class QueueMask():
 
 class mask_generator_fac:
     def __init__(self, norm_mean = np.array([0.5,0.5,0.5]), norm_std = np.array([0.5,0.5,0.5])):
-        self.norm_mean = np.reshape(norm_mean,(3,1,1))
-        self.norm_std = np.reshape(norm_std,(3,1,1))
+        self.norm_mean = torch.tensor(np.reshape(norm_mean,(3,1,1))).cuda()
+        self.norm_std = torch.tensor(np.reshape(norm_std,(3,1,1))).cuda()
     def __call__(self, shadow, shadow_free):
         norm_mean = self.norm_mean
         norm_std = self.norm_std
@@ -53,10 +53,10 @@ class mask_generator_fac:
         # ps(shadow_free,"shadow_free")
         masks=[]
         for i in range(shadow.size()[0]):
-            sf = shadow_free.data[None,i].detach().cpu().squeeze()
-            s = shadow.data[None,i].detach().cpu().squeeze()
-            im_f = to_gray(to_pil((sf*norm_std + norm_mean)))
-            im_s = to_gray(to_pil((s*norm_std + norm_mean)))
+            sf = shadow_free.data[i]
+            s = shadow.data[i]
+            im_f = to_gray(to_pil((sf*norm_std + norm_mean).detach().cpu()))
+            im_s = to_gray(to_pil((s*norm_std + norm_mean).detach().cpu()))
 
             diff = (np.asarray(im_f, dtype='float32')- np.asarray(im_s, dtype='float32')) # difference between shadow image and shadow_free image
             L = threshold_otsu(diff)

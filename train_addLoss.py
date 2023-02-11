@@ -17,8 +17,8 @@ from custom_loss_utils.feature_extractor.extractor import Extractor_VGG19BN,Extr
 from custom_loss_utils.custom_loss import color_loss_factory,content_loss_factory,style_loss_factory
 from custom_loss_utils.LossFormat import LossFormat
 
-from models_guided import Generator_F2S, Generator_S2F
-from models_guided import Discriminator
+from custom_model.normalized_baseline import Generator_F2S, Generator_S2F
+from custom_model.normalized_baseline import Discriminator
 from utils import ReplayBuffer
 from utils import LambdaLR
 from utils import weights_init_normal, ps, normalize_weight
@@ -77,8 +77,11 @@ print(opt)
 
 ###### Definition of variables ######
 # Networks
-netG_A2B = Generator_S2F(opt.input_nc, opt.output_nc)  # shadow to shadow_free
-netG_B2A = Generator_F2S(opt.output_nc, opt.input_nc)  # shadow_free to shadow
+norm_mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+norm_std = np.array([0.229, 0.224, 0.225],dtype=np.float32)
+
+netG_A2B = Generator_S2F(opt.input_nc, opt.output_nc,norm_mean=norm_mean,norm_std=norm_std)  # shadow to shadow_free
+netG_B2A = Generator_F2S(opt.output_nc, opt.input_nc,norm_mean=norm_mean,norm_std=norm_std)  # shadow_free to shadow
 netD_A = Discriminator(opt.input_nc)
 netD_B = Discriminator(opt.output_nc)
 
@@ -148,8 +151,6 @@ fake_A_buffer = ReplayBuffer()
 fake_B_buffer = ReplayBuffer()
 
 # Dataset loader
-norm_mean = np.array([0.485, 0.456, 0.406])
-norm_std = np.array([0.229, 0.224, 0.225])
 mask_generator = mask_generator_fac(norm_mean, norm_std)
 transforms_ = [#transforms.Resize((opt.size, opt.size), Image.BICUBIC),
 			   transforms.Resize(int(opt.size * 1.12), Image.BICUBIC),
@@ -181,7 +182,8 @@ gamma = normalize_weight([250, 10, 100, 20])
 st_drawer = StackDrawer(gamma, 4, opt.iter_loss, opt.output_dir,['loss_GAN', 'loss_shadow_robust', 'loss_identity', 'loss_perceptual'])
 
 ###### Training ######
-for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
+for epoch in range(opt.epoch, opt.n_epochs):
+	print(f"Epoch: {epoch}")
 	for i, batch in enumerate(tqdm(dataloader,mininterval=60)):
 		if(i>=opt.data_len):
 			break
@@ -202,12 +204,11 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 		fake_B = netG_A2B(real_A)
 		pred_fake = netD_B(fake_B)
 		shadow_rA_fB = mask_generator(real_A, fake_B)
-		mask_queue.multi_insert(mask_generator(real_A, fake_B))
-		mask_rB_fA = mask_queue.get_masks(batch_size=real_B.shape[0])
+		mask_queue.multi_insert(shadow_rA_fB)
+		mask_rB_fA = mask_queue.rand_item()
 
-		log_gpu_used("Before netG_B2A:",opt.gpu_id)
 		fake_A = netG_B2A(real_B, mask_rB_fA)
-		log_gpu_used("Before netD_A:",opt.gpu_id)
+
 		pred_fake = netD_A(fake_A)
 		
 		# Generator back to original domain (cycle)

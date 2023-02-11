@@ -41,8 +41,8 @@ class Extractor_VGG16BN:
     def __getitem__(self,layer_id):
         if layer_id not in self.feature.keys():
             print(f"cannot find this feature: {layer_id}")
-            return self.feature[0].cuda()
-        return self.feature[layer_id].cuda()
+            return self.feature[0]
+        return self.feature[layer_id]
 
     def __call__(self,x):
         self.feature["input"] = x

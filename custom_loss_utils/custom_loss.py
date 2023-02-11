@@ -19,8 +19,8 @@ class content_loss_factory:
         loss = 0
         for layer in self.layers:
             stacked_feat = self.extractor[layer]
-            img1_feat = stacked_feat[:batch_size//2]
-            img2_feat = stacked_feat[batch_size//2:]
+            img1_feat = stacked_feat[:batch_size]
+            img2_feat = stacked_feat[batch_size:]
             loss += mse_loss(img1_feat,img2_feat)
 
         loss /= len(self.layers)
@@ -50,8 +50,8 @@ class style_loss_factory:
         loss = 0
         for layer in self.layers:
             stacked_feat = self.extractor[layer]
-            img1_feat = gram_matrix(stacked_feat[:batch_size//2])
-            img2_feat = gram_matrix(stacked_feat[batch_size//2:])
+            img1_feat = gram_matrix(stacked_feat[:batch_size])
+            img2_feat = gram_matrix(stacked_feat[batch_size:])
             loss += mse_loss(img1_feat,img2_feat)
 
         loss /= len(self.layers)
