@@ -187,9 +187,6 @@ for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 
 		# GAN loss
 		fake_B = netG_A2B(real_A)
-		print(f"real_A: {real_A}")
-		print(f"fake_B: {fake_B}")
-		raise("Debug")
 		pred_fake = netD_B(fake_B)
 		loss_GAN_A2B = criterion_GAN(pred_fake, target_real)  # log(Db(Gb(a)))
 

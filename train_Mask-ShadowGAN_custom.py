@@ -7,30 +7,28 @@ import argparse
 import itertools
 from tqdm import tqdm
 
-import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from PIL import Image
 import torch
-from custom_loss_utils.feature_extractor.extractor import Extractor_VGG19BN,Extractor_VGG16BN
-from custom_loss_utils.custom_loss import color_loss_factory,content_loss_factory,style_loss_factory
-from custom_loss_utils.LossFormat import LossFormat
 
-from custom_model.normalized_baseline import Generator_F2S, Generator_S2F
-from custom_model.normalized_baseline import Discriminator
+from models_guided import Generator_F2S, Generator_S2F
+from models_guided import Discriminator
 from utils import ReplayBuffer
 from utils import LambdaLR
-from utils import weights_init_normal, ps, normalize_weight
-from plt_utils import StackDrawer,draw_loss
+# from utils import Logger
+from utils import weights_init_normal, ps
+
 # training set:
 #from datasets_USR import ImageDataset
 #from datasets_SRD import ImageDataset
 from datasets_ISTD import ImageDataset
 
-from utils_v2 import mask_generator_fac, QueueMask
+
 import matplotlib.pyplot as plt
-from log_utils import log_gpu_used
+from utils import mask_generator
+from utils import QueueMask
 
 
 parser = argparse.ArgumentParser()
@@ -48,12 +46,12 @@ parser.add_argument('--cuda', action='store_true', help='use GPU computation')
 parser.add_argument('--n_cpu', type=int, default=8, help='number of cpu threads to use during batch generation')
 parser.add_argument('--snapshot_epochs', type=int, default=50, help='number of epochs of training')
 parser.add_argument('--resume', action='store_true', help='resume')
-parser.add_argument('--iter_loss', type=int, default=500, help='average loss for n iterations')
+parser.add_argument('--iter_loss', type=int, default=100, help='average loss for n iterations')
 parser.add_argument('--data_len', type=int, default=9999, help='number of images use in training')
 parser.add_argument('--output_dir', type=str, default="output", help='persist training state directory')
 parser.add_argument('--gpu_id', type=int, default=0, help='gpu id in use')
 opt = parser.parse_args()
-plt.ioff()
+
 # USR
 # opt.dataroot = '/home/xwhu/dataset/shadow_USR'
 # SRD
@@ -77,11 +75,8 @@ print(opt)
 
 ###### Definition of variables ######
 # Networks
-norm_mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-norm_std = np.array([0.229, 0.224, 0.225],dtype=np.float32)
-
-netG_A2B = Generator_S2F(opt.input_nc, opt.output_nc,norm_mean=norm_mean,norm_std=norm_std)  # shadow to shadow_free
-netG_B2A = Generator_F2S(opt.output_nc, opt.input_nc,norm_mean=norm_mean,norm_std=norm_std)  # shadow_free to shadow
+netG_A2B = Generator_S2F(opt.input_nc, opt.output_nc)  # shadow to shadow_free
+netG_B2A = Generator_F2S(opt.output_nc, opt.input_nc)  # shadow_free to shadow
 netD_A = Discriminator(opt.input_nc)
 netD_B = Discriminator(opt.output_nc)
 
@@ -102,18 +97,11 @@ criterion_GAN = torch.nn.MSELoss()  # lsgan
 criterion_cycle = torch.nn.L1Loss()
 criterion_identity = torch.nn.L1Loss()
 
-#Perceptual_loss
-perceptual_loss = {}
-extractor = Extractor_VGG16BN()
-perceptual_loss["color"] = LossFormat("Color_loss",color_loss_factory(),10)
-perceptual_loss["content"]=LossFormat("Content_loss",content_loss_factory(extractor,[42]),100)
-perceptual_loss["style"]=LossFormat("Style_loss",style_loss_factory(extractor,[39]),1)
-
 # Optimizers & LR schedulers
 optimizer_G = torch.optim.Adam(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()),
-							   lr=opt.lr, betas=(0.9, 0.999))
-optimizer_D_A = torch.optim.Adam(netD_A.parameters(), lr=opt.lr, betas=(0.9, 0.999))
-optimizer_D_B = torch.optim.Adam(netD_B.parameters(), lr=opt.lr, betas=(0.9, 0.999))
+							   lr=opt.lr, betas=(0.5, 0.999))
+optimizer_D_A = torch.optim.Adam(netD_A.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+optimizer_D_B = torch.optim.Adam(netD_B.parameters(), lr=opt.lr, betas=(0.5, 0.999))
 
 lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G,
 												   lr_lambda=LambdaLR(opt.n_epochs, opt.epoch, opt.decay_epoch).step)
@@ -151,13 +139,12 @@ fake_A_buffer = ReplayBuffer()
 fake_B_buffer = ReplayBuffer()
 
 # Dataset loader
-mask_generator = mask_generator_fac(norm_mean, norm_std)
 transforms_ = [#transforms.Resize((opt.size, opt.size), Image.BICUBIC),
 			   transforms.Resize(int(opt.size * 1.12), Image.BICUBIC),
 			   transforms.RandomCrop(opt.size),
 			   transforms.RandomHorizontalFlip(),
 			   transforms.ToTensor(),
-			   transforms.Normalize(norm_mean,norm_std)]
+			   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
 dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unaligned=True),
 						batch_size=opt.batchSize, shuffle=True, num_workers=opt.n_cpu)
 
@@ -165,6 +152,7 @@ dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unal
 # logger = Logger(opt.n_epochs, len(dataloader), server='http://137.189.90.150', http_proxy_host='http://proxy.cse.cuhk.edu.hk/', env = 'main')
 ###################################
 
+plt.ioff()
 curr_iter = 0
 G_losses_temp = 0
 D_A_losses_temp = 0
@@ -177,13 +165,8 @@ to_pil = transforms.ToPILImage()
 mask_queue =  QueueMask(dataloader.__len__()/4)
 open(opt.log_path, 'w').write(str(opt) + '\n\n')
 
-gamma = normalize_weight([250, 10, 100, 20])
-
-st_drawer = StackDrawer(gamma, 4, opt.iter_loss, opt.output_dir,['loss_GAN', 'loss_shadow_robust', 'loss_identity', 'loss_perceptual'])
-
 ###### Training ######
-for epoch in range(opt.epoch, opt.n_epochs):
-	print(f"Epoch: {epoch}")
+for epoch in tqdm(range(opt.epoch, opt.n_epochs)):
 	for i, batch in enumerate(tqdm(dataloader,mininterval=60)):
 		if(i>=opt.data_len):
 			break
@@ -194,72 +177,46 @@ for epoch in range(opt.epoch, opt.n_epochs):
 		###### Generators A2B and B2A ######
 		optimizer_G.zero_grad()
 
-		#Generator same domain
+		# Identity loss
 		# G_A2B(B) should equal B if real B is fed
 		same_B = netG_A2B(real_B)
-		# G_B2A(A) should equal A if real A is fed, so the mask should be all zeros
-		same_A = netG_B2A(real_A, mask_non_shadow)
+		loss_identity_B = criterion_identity(same_B, real_B) * 5.0  # ||Gb(b)-b||1
 
-		# Generator shift domain
+		# G_B2A(A) should equal A if real A is fed, so the mask should be all zeros
+		# same_A = netG_B2A(real_A, mask_non_shadow)
+		# loss_identity_A = criterion_identity(same_A, real_A) * 5.0  # ||Ga(a)-a||1
+
+		# G_B2A(B) should equal B if mask is all zeros		
+
+		same_B = netG_B2A(real_B, mask_non_shadow)
+		loss_identity_BAB = criterion_identity(same_B, real_B) * 5.0
+
+		# GAN loss
 		fake_B = netG_A2B(real_A)
 		pred_fake = netD_B(fake_B)
-		shadow_rA_fB = mask_generator(real_A, fake_B)
-		mask_queue.multi_insert(shadow_rA_fB)
-		mask_rB_fA = mask_queue.rand_item()
-
-		fake_A = netG_B2A(real_B, mask_rB_fA)
-
-		pred_fake = netD_A(fake_A)
-		
-		# Generator back to original domain (cycle)
-		recovered_A = netG_B2A(fake_B, torch.cat(shadow_rA_fB)) # real shadow, false shadow free
-		recovered_B = netG_A2B(fake_A)
-
-		#Identity loss
-		loss_identity_B = criterion_identity(same_B, real_B)  # ||Gb(b)-b||1
-		loss_identity_A = criterion_identity(same_A, real_A)  # ||Ga(a)-a||1
-		loss_identity = loss_identity_A+loss_identity_B
-
-		#GAN loss
 		loss_GAN_A2B = criterion_GAN(pred_fake, target_real)  # log(Db(Gb(a)))
+
+		# if i==0:
+			# ps(real_A,"real_A")
+			# ps(fake_B,"fake_B")
+
+
+		mask_queue.multi_insert(mask_generator(real_A, fake_B))
+
+		fake_A = netG_B2A(real_B, mask_queue.rand_item())
+		pred_fake = netD_A(fake_A)
 		loss_GAN_B2A = criterion_GAN(pred_fake, target_real)  # log(Da(Ga(b)))
-		loss_GAN = loss_GAN_A2B + loss_GAN_B2A
 
 		# Cycle loss
-		loss_cycle_ABA = criterion_cycle(recovered_A, real_A)  # ||Ga(Gb(a))-a||1
-		loss_cycle_BAB = criterion_cycle(recovered_B, real_B)  # ||Gb(Ga(b))-b||1
-		cycle_loss = loss_cycle_ABA + loss_cycle_BAB
+		recovered_A = netG_B2A(fake_B, mask_queue.last_item()) # real shadow, false shadow free
+		loss_cycle_ABA = criterion_cycle(recovered_A, real_A) * 10.0  # ||Ga(Gb(a))-a||1
 
-		# Shadow-robust loss
-		
-		extractor(torch.cat((real_A,fake_B)))
-		loss_rA_fB = perceptual_loss['content'].calc_loss(real_A,fake_B)
-		# print(f"loss_rA_fB: {loss_rA_fB}")
-		extractor(torch.cat((real_B,fake_A)))
-		loss_rB_fA = perceptual_loss['content'].calc_loss(real_B,fake_A)
-
-		loss_shadow_robust = loss_rA_fB + loss_rB_fA
-		
-		#Perceptual loss
-		loss_perceptual_ABA = 0
-		loss_perceptual_BAB = 0
-		
-		extractor(torch.cat((recovered_A, real_A)))
-		for loss_type in perceptual_loss.keys():
-			loss_perceptual_ABA += perceptual_loss[loss_type].calc_loss(recovered_A, real_A)
-
-		extractor(torch.cat((recovered_B, real_B)))
-		for loss_type in perceptual_loss.keys():
-			loss_perceptual_BAB += perceptual_loss[loss_type].calc_loss(recovered_B, real_B)
-
-		loss_perceptual = loss_perceptual_ABA + loss_perceptual_BAB
+		recovered_B = netG_A2B(fake_A)
+		loss_cycle_BAB = criterion_cycle(recovered_B, real_B) * 10.0  # ||Gb(Ga(b))-b||1
 
 		# Total loss
-		
-		loss_G = gamma[0]*(loss_GAN)+gamma[1]*(loss_shadow_robust)+gamma[2]*(loss_identity)+gamma[3]*(loss_perceptual)
+		loss_G = loss_identity_BAB + loss_identity_B + loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB
 		loss_G.backward()
-
-		st_drawer.update([loss_GAN, loss_shadow_robust, loss_identity, loss_perceptual])
 
 		#G_losses.append(loss_G.item())
 		G_losses_temp += loss_G.item()
@@ -316,7 +273,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
 		if (i+1) % opt.iter_loss == 0:
 			log = '[iter %d], [loss_G %.5f], [loss_G_identity %.5f], [loss_G_GAN %.5f],' \
 				  '[loss_G_cycle %.5f], [loss_D %.5f]' % \
-				  (curr_iter, loss_G, (loss_identity_A + loss_identity_B), (loss_GAN_A2B + loss_GAN_B2A),
+				  (curr_iter, loss_G, (loss_identity_BAB + loss_identity_B), (loss_GAN_A2B + loss_GAN_B2A),
 				   (loss_cycle_ABA + loss_cycle_BAB), (loss_D_A + loss_D_B))
 			print(log)
 			open(opt.log_path, 'a').write(log + '\n')
@@ -334,19 +291,19 @@ for epoch in range(opt.epoch, opt.n_epochs):
 			print(avg_log)
 			open(opt.log_path, 'a').write(avg_log + '\n')
 
-		if curr_iter%2000==0:
-			st_drawer.draw()
-
-		if i==1:
-
 			img_fake_A = 0.5 * (fake_A.detach().data + 1.0)
 			for i in range(img_fake_A.size()[0]):
 				img_fake_A = (to_pil(img_fake_A.data[i].cpu()))
-				img_fake_A.save(os.path.join(opt.output_dir,f"fake_A_{epoch}.png"))
+				img_fake_A.save(os.path.join(opt.output_dir,f"fake_A_{i}.png"))
 
 			img_fake_B = 0.5 * (fake_B.detach().data + 1.0)
 			img_fake_B = (to_pil(img_fake_B.data.squeeze(0).cpu()))
-			img_fake_B.save(os.path.join(opt.output_dir,f'fake_B_{epoch}.png'))
+			img_fake_B.save(os.path.join(opt.output_dir,'fake_B.png'))
+
+		# Progress report (http://137.189.90.150:8097)
+		# logger.log({'loss_G': loss_G, 'loss_G_identity': (loss_identity_A + loss_identity_B), 'loss_G_GAN': (loss_GAN_A2B + loss_GAN_B2A),
+		#             'loss_G_cycle': (loss_cycle_ABA + loss_cycle_BAB), 'loss_D': (loss_D_A + loss_D_B)},
+		#             images={'real_A': real_A, 'real_B': real_B, 'fake_A': fake_A, 'fake_B': fake_B})
 
 	# Update learning rates
 	lr_scheduler_G.step()
@@ -377,8 +334,24 @@ for epoch in range(opt.epoch, opt.n_epochs):
 	print('Epoch:{}'.format(epoch))
 
 	if (epoch + 1) % opt.snapshot_epochs == 0:
-		draw_loss([G_losses],["Generator Loss"],opt.iter_loss,opt.output_dir, "Generator_loss")
+		plt.figure(figsize=(10, 5))
+		plt.title("Generator Loss During Training")
+		plt.plot(G_losses, label="G loss")
+		plt.xlabel("iterations / %d" % (opt.iter_loss))
+		plt.ylabel("loss")
+		plt.legend()
+		plt.savefig(os.path.join(opt.output_dir,'generator.png'))
+		# plt.show(block=False)
 
-		draw_loss([D_A_losses,D_B_losses],["D_A_losses","D_B_losses"],opt.iter_loss,opt.output_dir,"Discriminator_loss")
+		plt.figure(figsize=(10, 5))
+		plt.title("Discriminator Loss During Training")
+		plt.plot(D_A_losses, label="D_A loss")
+		plt.plot(D_B_losses, label="D_B loss")
+		plt.xlabel("iterations / %d" % (opt.iter_loss))
+		plt.ylabel("loss")
+		plt.legend()
+		plt.savefig(os.path.join(opt.output_dir,'discriminator.png')) 
+		# plt.show(block=False)
+		plt.close('all')
 
 ###################################

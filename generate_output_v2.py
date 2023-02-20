@@ -89,6 +89,8 @@ img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(norm_mean,norm_std)
 ])
+norm_mean_ten = torch.tensor(norm_mean).unsqueeze(1).unsqueeze(1).cuda()
+norm_std_ten = torch.tensor(norm_std).unsqueeze(1).unsqueeze(1).cuda()
 #dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, mode='test'),
 #                        batch_size=opt.batchSize, shuffle=False, num_workers=opt.n_cpu)
 ###################################
@@ -129,7 +131,7 @@ for idx, img_name in enumerate(gt_list):
 
     temp_B = netG_A2B(img_var)
 
-    fake_B = norm_std*temp_B.data + norm_mean
+    fake_B = norm_std_ten*temp_B.data + norm_mean_ten
     fake_B = np.array(transforms.Resize((h, w))(to_pil(fake_B.data.squeeze(0).cpu())))
     Image.fromarray(fake_B).save(os.path.join(shadow_free_dir,img_name + opt.im_suf_A))
     print('Generated images %04d of %04d' % (idx+1, len(gt_list)))

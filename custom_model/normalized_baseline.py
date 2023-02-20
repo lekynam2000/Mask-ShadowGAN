@@ -29,6 +29,8 @@ class Generator_S2F(nn.Module):
         self.b = (temp_b-self.a)/2.0
         self.a = self.a.unsqueeze(1).unsqueeze(1)
         self.b = self.b.unsqueeze(1).unsqueeze(1)
+        print(f"self.a: {self.a}")
+        print(f"self.b: {self.b}")
 
         # Initial convolution block
         model = [   nn.ReflectionPad2d(3),
